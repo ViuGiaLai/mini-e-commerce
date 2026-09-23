@@ -175,7 +175,7 @@ export default function DashboardApp(){
   {page==='success'&&<Success navigate={navigate} order={lastOrder||myOrders[0]}/>}
   {page==='orders'&&<Orders orders={myOrders} navigate={navigate}/>}
   {page==='wishlist'&&<Wishlist products={products} wishlist={wishlist} toggleWish={toggleWish} add={add} open={openProduct}/>}
-  {page==='profile'&&<Profile user={user} setUser={setUser} logout={logout}/>}
+  {page==='profile'&&<Profile user={user} setUser={setUser} logout={logout} navigate={navigate}/>}
   <Footer/>
  </div>
 }
@@ -188,6 +188,7 @@ function Header({cart,query,setQuery,onSearch,login,logout,user,navigate,mobile}
   <nav className="shop-actions">
    <button onClick={()=>navigate('wishlist')} aria-label="Sản phẩm yêu thích"><Heart size={20}/></button>
    <button onClick={()=>navigate('cart')} className="cart-btn" aria-label="Giỏ hàng"><ShoppingBag size={20}/>{cart.length>0&&<i>{itemCount(cart)}</i>}</button>
+   {user?.role==='user'&&<button className="account-btn order-link" onClick={()=>navigate('orders')} title="Xem đơn hàng đã đặt" aria-label="Xem đơn hàng đã đặt"><Package size={18}/><span>Đơn hàng</span></button>}
    {user
     ?<><button className="account-btn" onClick={()=>navigate(user.role==='admin'?'admin':'profile')}><User size={18}/><span>{user.role==='admin'?'Quản trị':user.name.split(' ')[0]}</span></button><button className="account-btn" onClick={logout} title="Đăng xuất" aria-label="Đăng xuất"><LogOut size={18}/></button></>
     :<button className="account-btn" onClick={login}><User size={18}/><span>Đăng nhập</span></button>}
@@ -430,7 +431,7 @@ function Wishlist({products,wishlist,toggleWish,add,open,navigate}:any){
  </main>
 }
 
-function Profile({user,setUser,logout}:any){
+function Profile({user,setUser,logout,navigate}:any){
  const [saved,setSaved]=useState(false)
  const [form,setForm]=useState({name:user?.name||'',email:user?.email||'',phone:user?.phone||'',address:user?.address||''})
  const save=(e:any)=>{
@@ -452,7 +453,10 @@ function Profile({user,setUser,logout}:any){
    <label>Địa chỉ mặc định<input value={form.address} onChange={e=>setForm({...form,address:e.target.value})}/></label>
    <button className="hero-btn">{saved?'Đã lưu':'Lưu thay đổi'}</button>
   </form>
-  <button className="outline-btn" style={{marginTop:16}} onClick={logout}><LogOut size={17}/> Đăng xuất</button>
+  <div className="profile-actions">
+   <button className="hero-btn" onClick={()=>navigate('orders')}><Package size={17}/> Xem đơn hàng đã đặt</button>
+   <button className="outline-btn" onClick={logout}><LogOut size={17}/> Đăng xuất</button>
+  </div>
  </main>
 }
 function Empty({text,action,onClick}:any){

@@ -3,21 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { ArrowRight, BarChart3, Check, ChevronRight, CircleDollarSign, Heart, LayoutDashboard, LogOut, Menu, Package, Pencil, Plus, Search, ShoppingBag, Star, Trash2, Truck, User, Users, X } from 'lucide-react'
+import { CATALOG_VERSION, productSeed, type Product } from '@/lib/products'
 
-type Product = { id:number; name:string; category:string; price:number; sale:number; stock:number; rating:number; sold:number; badge?:string; image:string; description:string }
 type CartItem = Product & { quantity:number }
 type Order = { id:string; date:string; createdAt?:string; items:CartItem[]; total:number; payment:string; status:string; customer:string; customerEmail:string; phone?:string; address:string; note?:string }
 type Account = { email:string; role:'admin'|'user'; name:string; phone?:string; address?:string }
 type Page = 'home'|'products'|'detail'|'cart'|'checkout'|'success'|'orders'|'wishlist'|'profile'|'login'|'admin'
 
-const productSeed:Product[] = [
- {id:1,name:'iPhone 15 Pro',category:'Smartphones',price:28990000,sale:25990000,stock:18,rating:4.9,sold:328,badge:'Bán chạy',image:'https://images.unsplash.com/photo-1696446701796-da61225697cc?w=700&q=85',description:'Chip A17 Pro mạnh mẽ, thiết kế titan và hệ thống camera chuyên nghiệp cho mọi khoảnh khắc.'},
- {id:2,name:'MacBook Air M3',category:'Laptops',price:32990000,sale:29990000,stock:11,rating:4.8,sold:186,badge:'Mới',image:'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=700&q=85',description:'Sức mạnh từ chip Apple M3 trong thiết kế mỏng nhẹ, sẵn sàng làm việc ở mọi nơi.'},
- {id:3,name:'Sony WH-1000XM5',category:'Accessories',price:9490000,sale:7490000,stock:24,rating:4.7,sold:241,badge:'Giảm giá',image:'https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=700&q=85',description:'Khả năng chống ồn hàng đầu cùng cảm giác đeo thoải mái suốt ngày dài.'},
- {id:4,name:'Áo sơ mi Linen cổ điển',category:'Fashion',price:1590000,sale:1190000,stock:36,rating:4.6,sold:154,image:'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=700&q=85',description:'Vải linen cao cấp thoáng khí, phom dáng thư thái cho những ngày năng động.'},
- {id:5,name:'Nike Air Max 270',category:'Shoes',price:3890000,sale:3190000,stock:20,rating:4.8,sold:203,badge:'Nổi bật',image:'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=700&q=85',description:'Đệm khí êm ái và phom dáng táo bạo dành cho chuyển động mỗi ngày.'},
- {id:6,name:'Bộ gốm tối giản',category:'Home & Living',price:890000,sale:690000,stock:32,rating:4.5,sold:98,image:'https://images.unsplash.com/photo-1577937927133-66ef06acdf18?w=700&q=85',description:'Bộ bàn ăn gốm hoàn thiện thủ công, mang sự bình yên vào từng bữa cơm.'},
-]
 const money=(n:number)=>new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND',maximumFractionDigits:0}).format(n)
 const categories=['Tất cả','Điện tử','Điện thoại','Laptop','Thời trang','Giày dép','Phụ kiện','Nhà cửa']
 const categoryMap:Record<string,string>={'Smartphones':'Điện thoại','Laptops':'Laptop','Fashion':'Thời trang','Shoes':'Giày dép','Accessories':'Phụ kiện','Home & Living':'Nhà cửa'}
@@ -53,6 +45,8 @@ const readJSON=<T,>(key:string,fallback:T):T=>{
 }
 const readArray=<T,>(key:string,fallback:T[]=[]):T[]=>{const value=readJSON<unknown>(key,fallback);return Array.isArray(value)?value as T[]:fallback}
 const writeJSON=(key:string,value:unknown)=>{try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
+const legacySeedNames=['iPhone 15 Pro','MacBook Air M3','Sony WH-1000XM5','Áo sơ mi Linen cổ điển','Nike Air Max 270','Bộ gốm tối giản']
+const isUntouchedLegacyCatalog=(catalog:Product[])=>catalog.length===legacySeedNames.length&&catalog.every((product,index)=>product.id===index+1&&product.name===legacySeedNames[index])
 
 export default function DashboardApp(){
  const router=useRouter(),pathname=usePathname()
@@ -70,7 +64,18 @@ export default function DashboardApp(){
  useEffect(()=>{
   const session=readJSON<Account|null>('mc-user',null)
   const acc=session?{...session,...readJSON<Partial<Account>>(profileKey(session.email),{})}:null
-  const catalog=readArray<Product>('mc-products',productSeed)
+  const storedCatalog=readArray<Product>('mc-products')
+  const storedVersion=readJSON<number>('mc-catalog-version',0)
+  let catalog=storedCatalog.length?storedCatalog:productSeed
+  if(storedVersion!==CATALOG_VERSION){
+   if(storedCatalog.length&&!localStorage.getItem(`mc-products-backup-v${storedVersion}`))writeJSON(`mc-products-backup-v${storedVersion}`,storedCatalog)
+   if(!storedCatalog.length||isUntouchedLegacyCatalog(storedCatalog))catalog=productSeed
+   else{
+    const existingIds=new Set(storedCatalog.map(product=>product.id))
+    catalog=[...storedCatalog,...productSeed.filter(product=>!existingIds.has(product.id))]
+   }
+   writeJSON('mc-products',catalog);writeJSON('mc-catalog-version',CATALOG_VERSION)
+  }
   setUser(acc)
   const syncedCart=syncCart(readArray<CartItem>(personalKey('mc-cart',acc)),catalog)
   setCart(syncedCart);writeJSON(personalKey('mc-cart',acc),syncedCart)
@@ -204,6 +209,10 @@ function MobileNav({close,navigate,user,login,logout}:any){
 }
 function Home({navigate,add,products,open,setCategory,setQuery}:any){
  const openCatalog=(nextCategory:string='Tất cả')=>{setQuery('');setCategory(nextCategory);navigate('products')}
+ const selectProducts=(ids:number[])=>ids.map(id=>products.find((product:Product)=>product.id===id)).filter(Boolean)
+ const featured=selectProducts([1,10,18,27])
+ const newArrivals=selectProducts([35,43,2,30])
+ const heroProduct=products.find((product:Product)=>product.id===10)||products[0]||productSeed[0]
  return <main>
   <section className="hero">
    <div>
@@ -212,7 +221,7 @@ function Home({navigate,add,products,open,setCategory,setQuery}:any){
     <p>Sản phẩm được tuyển chọn cho công việc, ngôi nhà và nhịp sống mỗi ngày. Chất lượng rõ ràng, giao hàng tận nơi.</p>
     <button className="hero-btn" onClick={()=>openCatalog()}>Khám phá ngay <ArrowRight size={17}/></button>
    </div>
-   <div className="hero-card"><img src={products[1]?.image||productSeed[1].image} alt="Sản phẩm nổi bật"/><div><strong>Hàng mới về</strong><span>Ưu đãi đến 20%</span></div></div>
+   <div className="hero-card"><img src={heroProduct.image} alt={heroProduct.name}/><div><strong>Hàng mới về</strong><span>Ưu đãi đến 20%</span></div></div>
   </section>
   <section className="section category-cards">
    <div className="section-heading">
@@ -221,8 +230,8 @@ function Home({navigate,add,products,open,setCategory,setQuery}:any){
    </div>
    <div className="category-grid">{['Điện tử','Thời trang','Giày dép','Nhà cửa'].map((c,i)=><button key={c} onClick={()=>openCatalog(c)} className={`cat-card cat-${i}`}><span>{c}</span><small>Khám phá bộ sưu tập <ArrowRight size={13}/></small></button>)}</div>
   </section>
-  <ProductSection title="Sản phẩm nổi bật" products={products.slice(0,4)} add={add} viewAll={()=>openCatalog()} open={open}/>
-  <ProductSection title="Hàng mới về" products={products.slice(2,6)} add={add} viewAll={()=>openCatalog()} open={open}/>
+  <ProductSection title="Sản phẩm nổi bật" products={featured.length===4?featured:products.slice(0,4)} add={add} viewAll={()=>openCatalog()} open={open}/>
+  <ProductSection title="Hàng mới về" products={newArrivals.length===4?newArrivals:products.slice(4,8)} add={add} viewAll={()=>openCatalog()} open={open}/>
  </main>
 }
 function ProductSection({title,products,add,viewAll,open}:any){
@@ -623,7 +632,7 @@ function AdminForm({product,close,save}:any){
    <button type="button" className="modal-x" onClick={close}><X/></button>
    <h2 id="product-form-title">{product?'Chỉnh sửa sản phẩm':'Thêm sản phẩm'}</h2>
    <label>Tên sản phẩm<input required minLength={2} value={f.name} onChange={e=>setF({...f,name:e.target.value})}/></label>
-   <label>Danh mục<select value={f.category} onChange={e=>setF({...f,category:e.target.value})}>{Object.entries(categoryMap).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></label>
+   <label>Danh mục<select value={f.category} onChange={e=>setF({...f,category:e.target.value as Product['category']})}>{Object.entries(categoryMap).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></label>
    <div className="form-two"><label>Giá niêm yết<input required min={1000} step={1000} type="number" value={f.price} onChange={e=>setF({...f,price:Number(e.target.value)})}/></label><label>Giá bán<input required min={1000} step={1000} max={f.price||undefined} type="number" value={f.sale} onChange={e=>setF({...f,sale:Number(e.target.value)})}/></label></div>
    <label>Tồn kho<input required min={0} type="number" value={f.stock} onChange={e=>setF({...f,stock:Number(e.target.value)})}/></label>
    <label>Ảnh sản phẩm<input required type="url" value={f.image} onChange={e=>setF({...f,image:e.target.value})}/></label>

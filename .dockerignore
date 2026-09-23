@@ -1,6 +1,11 @@
-node_modules
-.next
 .git
+.github
+.next
+node_modules
+npm-debug.log*
+pnpm-debug.log*
+README.md
 docker-web-demo
-*.log
+*.tsbuildinfo
 .env*
+!.env.example

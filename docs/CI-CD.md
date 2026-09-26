@@ -1,28 +1,32 @@
-# CI/CD cho Render
+# CI/CD ViuFilm3D
 
-Pipeline nằm tại `.github/workflows/ci-cd.yml` và triển khai service Render hiện có:
-
-- Service ID: `srv-dapq4dgu01pc73dihfg0`
-- Production URL: `https://mini-e-commerce-3l2u.onrender.com`
-- Production health check: `/api/health`
+Pipeline chạy tự động khi có pull request hoặc push lên `main`.
 
 ## Luồng triển khai
 
-1. Pull request vào `main`: cài dependency từ lockfile, type-check, build Next.js và build Docker image.
-2. Push/merge vào `main`: chỉ chạy CD sau khi toàn bộ CI thành công.
-3. CD gọi Render API với đúng `GITHUB_SHA`.
-4. Workflow chờ deploy chuyển sang `live`; trạng thái build/update thất bại làm workflow thất bại.
-5. Workflow gọi `https://mini-e-commerce-3l2u.onrender.com/api/health` để xác minh production.
+1. Cài dependency bằng `npm ci`.
+2. Kiểm tra TypeScript và build Next.js.
+3. Build Docker image từ `Dockerfile`.
+4. Push image với tag `latest` và SHA lên GitHub Container Registry.
+5. Gọi Render API để deploy chính xác commit vừa push.
+6. Chờ Render build, thay instance và chuyển deploy sang trạng thái `live`.
+7. Gọi `https://mini-e-commerce-3l2u.onrender.com/api/health` để xác nhận ứng dụng hoạt động.
 
-Render là Git-backed Docker service nên Render tự build và quản lý image của bản deploy. Không push thêm một image khác lên GHCR, nhờ đó artifact được deploy luôn tương ứng với commit đã được Render liên kết.
+## Cấu hình bắt buộc
 
-## Thiết lập một lần
+Trong GitHub repository, mở **Settings → Secrets and variables → Actions** và tạo repository secret:
 
-1. Tạo Render API key trong **Render Dashboard → Account Settings → API Keys**.
-2. Vào repository GitHub `ViuGiaLai/mini-e-commerce` → **Settings → Secrets and variables → Actions**.
-3. Tạo repository secret tên `RENDER_API_KEY` và dán API key vào.
-4. Trong Render service → **Settings → Auto-Deploy**, chọn **Off**. GitHub Actions là nguồn duy nhất kích hoạt deploy, tránh deploy trùng khi vừa push lên `main`.
-5. Trong Render service → **Settings → Health Check Path**, đặt `/api/health`.
-6. Nên bật GitHub branch protection cho `main` và yêu cầu check **Validate and build** thành công trước khi merge.
+- `RENDER_API_KEY`: API key của Render.
 
-Không commit API key hoặc deploy hook URL vào repository.
+Trong Render service `srv-dapq4dgu01pc73dihfg0`:
+
+- Auto-Deploy: `Off`.
+- Health Check Path: `/api/health`.
+- Branch: `main`.
+- Runtime: Docker.
+
+Không cần tạo secret cho GHCR. Workflow dùng `GITHUB_TOKEN` do GitHub Actions cấp tự động.
+
+## Chạy lại thủ công
+
+Mở **GitHub → Actions → ViuFilm3D CI/CD → Run workflow** và chọn nhánh `main`.

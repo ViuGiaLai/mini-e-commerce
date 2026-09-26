@@ -1,12 +1,25 @@
-import { Analytics } from '@vercel/analytics/next'
-import type { Metadata, Viewport } from 'next'
-import './globals.css'
+import type { Metadata, Viewport } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'Minimart — Mua sắm tinh gọn mỗi ngày',
-  description: 'Không gian mua sắm hiện đại cho công nghệ, thời trang và phong cách sống.',
-}
-export const viewport: Viewport = { colorScheme: 'light', themeColor: '#f7f8fc' }
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="vi"><body className="antialiased">{children}{process.env.NODE_ENV === 'production' && <Analytics />}</body></html>
+  title: "ViuFilm3D — Thế giới hoạt hình nguyên bản",
+  description:
+    "Nền tảng xem hoạt hình 3D với thư viện phim nguyên bản và dữ liệu được lưu cục bộ.",
+  icons: {
+    icon: "/viufilm3d-logo.png",
+    apple: "/viufilm3d-logo.png",
+  },
+};
+export const viewport: Viewport = {
+  colorScheme: "dark",
+  themeColor: "#070a11",
+};
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="vi">
+      <body className="antialiased">{children}</body>
+    </html>
+  );
 }

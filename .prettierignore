@@ -1,0 +1,6 @@
+.next/
+node_modules/
+public/videos/
+scripts/deploy-render.mjs
+.env*
+!.env.example

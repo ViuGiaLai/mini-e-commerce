@@ -7,15 +7,16 @@ __v0_jsx-dev-runtime.ts
 .vercel/
 
 # Environment variables
-.env*.local
+.env
+.env.*
+!.env.example
 
 # Common ignores
 node_modules
 .next/
 *.tsbuildinfo
 .DS_Store
-
-.env.example
+.env.local
 
 # Local browser extension copied into the workspace by mistake
 YouTube Dubbing*/

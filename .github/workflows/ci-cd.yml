@@ -40,6 +40,9 @@ jobs:
       - name: Type-check application
         run: npm run typecheck
 
+      - name: Check source formatting
+        run: npm run format:check
+
       - name: Build Next.js application
         run: npm run build
 
@@ -89,6 +92,11 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            NEXT_PUBLIC_API_MODE=production
+            NEXT_PUBLIC_API_BASE_URL=
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

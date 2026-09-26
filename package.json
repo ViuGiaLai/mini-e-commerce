@@ -7,10 +7,19 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,css,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,css,md,yml,yaml}\"",
     "typecheck": "tsc --noEmit",
-    "ci": "npm run typecheck && npm run build"
+    "ci": "npm run format:check && npm run typecheck && npm run build",
+    "backend:check": "tsx scripts/check-backend.ts",
+    "db:seed": "tsx scripts/seed-supabase.ts",
+    "r2:check": "tsx scripts/check-r2.ts",
+    "r2:cors": "tsx scripts/configure-r2-cors.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1141.0",
+    "@aws-sdk/s3-request-presigner": "^3.1141.0",
+    "@supabase/supabase-js": "^2.117.2",
     "lucide-react": "^1.16.0",
     "next": "16.3.3",
     "react": "^19",
@@ -24,6 +33,7 @@
     "postcss": "^8.5",
     "prettier": "^3.9.9",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "5.7.3"
   }
 }

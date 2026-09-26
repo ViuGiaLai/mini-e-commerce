@@ -1,3 +1,11 @@
+export type EpisodeItem = {
+  episode: number;
+  video: string;
+  title?: string;
+  duration?: number;
+  isTrailer?: boolean;
+};
+
 export type Movie = {
   id: number;
   slug: string;
@@ -19,6 +27,11 @@ export type Movie = {
   updateDay: string;
   status: "Đang chiếu" | "Hoàn thành" | "Sắp chiếu";
   video: string;
+  trailer?: string;
+  episodes?: EpisodeItem[];
+  poster?: string;
+  subtitle?: string;
+  audio?: string;
 };
 
 const slugify = (value: string) =>

@@ -17,6 +17,8 @@ Pipeline chạy tự động khi có pull request hoặc push lên `main`.
 Trong GitHub repository, mở **Settings → Secrets and variables → Actions** và tạo repository secret:
 
 - `RENDER_API_KEY`: API key của Render.
+- `NEXT_PUBLIC_SUPABASE_URL`: URL project Supabase dùng lúc build frontend.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: publishable key Supabase dùng lúc build frontend.
 
 Trong Render service `srv-dapq4dgu01pc73dihfg0`:
 
@@ -24,6 +26,10 @@ Trong Render service `srv-dapq4dgu01pc73dihfg0`:
 - Health Check Path: `/api/health`.
 - Branch: `main`.
 - Runtime: Docker.
+
+Trong **Render → Environment**, cấu hình toàn bộ biến production liệt kê tại [BACKEND.md](BACKEND.md). Render chuyển các biến public thành Docker build arguments và vẫn cung cấp chúng ở runtime; các secret server không được tham chiếu bằng `ARG` trong Dockerfile.
+
+`/api/health` là readiness check thực. Deploy sẽ không được xác nhận nếu migration Supabase chưa chạy hoặc thiếu cấu hình bắt buộc. Có thể xem chi tiết an toàn tại `/api/v1/status`.
 
 Không cần tạo secret cho GHCR. Workflow dùng `GITHUB_TOKEN` do GitHub Actions cấp tự động.
 

@@ -4,25 +4,36 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   CalendarDays,
+  CalendarClock,
   Check,
   ChevronRight,
   Clapperboard,
   Clock3,
+  Copy,
+  Database,
   Eye,
   Film,
+  Filter,
   Heart,
   History,
   LayoutDashboard,
   LogOut,
   Menu,
+  Moon,
   Pencil,
   Play,
   Plus,
   Search,
+  Save,
+  Settings,
+  ShieldCheck,
   Star,
   Sun,
   Trash2,
+  TrendingUp,
   User,
+  UserCheck,
+  UserPlus,
   Users,
   X,
 } from "lucide-react";
@@ -35,11 +46,86 @@ type HistoryItem = {
   watchedAt: string;
   progress: number;
 };
+type Viewer = {
+  id: number;
+  name: string;
+  email: string;
+  role: "admin" | "user";
+  status: "Đang hoạt động" | "Đã khóa";
+  plan: "Miễn phí" | "VIP";
+  joinedAt: string;
+  lastActive: string;
+  watches: number;
+};
+type SiteSettings = {
+  siteName: string;
+  tagline: string;
+  supportEmail: string;
+  maintenance: boolean;
+  allowRegistration: boolean;
+  showViewCount: boolean;
+  itemsPerPage: number;
+};
+type ThemeMode = "dark" | "light";
 const storage = {
   movies: "viufilm3d-movies",
   favorites: "viufilm3d-favorites",
   history: "viufilm3d-history",
   user: "viufilm3d-user",
+  viewers: "viufilm3d-viewers",
+  settings: "viufilm3d-settings",
+  theme: "viufilm3d-theme",
+};
+const viewerSeed: Viewer[] = [
+  {
+    id: 1,
+    name: "Quản trị viên",
+    email: "admin@gmail.com",
+    role: "admin",
+    status: "Đang hoạt động",
+    plan: "VIP",
+    joinedAt: "2026-01-05",
+    lastActive: "2026-09-26T08:30:00.000Z",
+    watches: 186,
+  },
+  {
+    id: 2,
+    name: "Minh Anh",
+    email: "user@gmail.com",
+    role: "user",
+    status: "Đang hoạt động",
+    plan: "VIP",
+    joinedAt: "2026-02-12",
+    lastActive: "2026-09-26T07:20:00.000Z",
+    watches: 94,
+  },
+  ...[
+    ["Hoàng Nam", "nam.hoang@gmail.com", "Miễn phí", 71],
+    ["Bảo Ngọc", "bao.ngoc@gmail.com", "VIP", 128],
+    ["Tuấn Kiệt", "tuan.kiet@gmail.com", "Miễn phí", 43],
+    ["Thảo Vy", "thao.vy@gmail.com", "VIP", 109],
+    ["Gia Huy", "gia.huy@gmail.com", "Miễn phí", 22],
+    ["Khánh Linh", "khanh.linh@gmail.com", "VIP", 87],
+  ].map(([name, email, plan, watches], index) => ({
+    id: index + 3,
+    name: String(name),
+    email: String(email),
+    role: "user" as const,
+    status: "Đang hoạt động" as const,
+    plan: plan as Viewer["plan"],
+    joinedAt: `2026-0${(index % 6) + 3}-${String(index + 10).padStart(2, "0")}`,
+    lastActive: new Date(Date.now() - index * 86400000).toISOString(),
+    watches: Number(watches),
+  })),
+];
+const defaultSettings: SiteSettings = {
+  siteName: "ViuFilm3D",
+  tagline: "Thế giới hoạt hình 3D nguyên bản",
+  supportEmail: "support@viufilm3d.local",
+  maintenance: false,
+  allowRegistration: true,
+  showViewCount: true,
+  itemsPerPage: 20,
 };
 const read = <T,>(key: string, fallback: T): T => {
   try {
@@ -64,6 +150,15 @@ const episodeLabel = (movie: Movie) =>
     ? "Sắp chiếu"
     : `${movie.episode}/${movie.totalEpisodes}`;
 const getId = (path: string) => Number(path.split("/").filter(Boolean).pop());
+const toSlug = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
 
 export default function DashboardApp() {
   const router = useRouter(),
@@ -73,6 +168,8 @@ export default function DashboardApp() {
     [history, setHistory] = useState<HistoryItem[]>([]);
   const [user, setUser] = useState<Account | null>(null),
     [ready, setReady] = useState(false),
+    [siteSettings, setSiteSettings] = useState<SiteSettings>(defaultSettings),
+    [theme, setTheme] = useState<ThemeMode>("dark"),
     [query, setQuery] = useState(""),
     [genre, setGenre] = useState("Tất cả"),
     [mobile, setMobile] = useState(false),
@@ -86,6 +183,19 @@ export default function DashboardApp() {
     setFavorites(read<number[]>(storage.favorites, []));
     setHistory(read<HistoryItem[]>(storage.history, []));
     setUser(read<Account | null>(storage.user, null));
+    setSiteSettings({
+      ...defaultSettings,
+      ...read<SiteSettings>(storage.settings, defaultSettings),
+    });
+    const savedTheme = localStorage.getItem(storage.theme);
+    const initialTheme: ThemeMode =
+      savedTheme === "light" || savedTheme === "dark"
+        ? savedTheme
+        : window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark";
+    setTheme(initialTheme);
+    document.documentElement.dataset.mode = initialTheme;
     setReady(true);
     return () => {
       if (timer.current) clearTimeout(timer.current);
@@ -95,6 +205,14 @@ export default function DashboardApp() {
     setToast(message);
     if (timer.current) clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setToast(""), 2200);
+  };
+  const toggleTheme = () => {
+    setTheme((current) => {
+      const next = current === "dark" ? "light" : "dark";
+      localStorage.setItem(storage.theme, next);
+      document.documentElement.dataset.mode = next;
+      return next;
+    });
   };
   const go = (path: string) => {
     setMobile(false);
@@ -162,6 +280,8 @@ export default function DashboardApp() {
         logout={logout}
         pathname={pathname}
         go={go}
+        settings={siteSettings}
+        setSettings={setSiteSettings}
       />
     ) : (
       <Login
@@ -188,13 +308,23 @@ export default function DashboardApp() {
         go={go}
         mobile={() => setMobile(true)}
         logout={logout}
+        theme={theme}
+        toggleTheme={toggleTheme}
       />
+      {siteSettings.maintenance && (
+        <div className="maintenance-banner">
+          <Settings /> Hệ thống đang ở chế độ bảo trì. Một số nội dung có thể
+          được cập nhật trong thời gian này.
+        </div>
+      )}
       {mobile && (
         <MobileNav
           user={user}
           go={go}
           close={() => setMobile(false)}
           logout={logout}
+          theme={theme}
+          toggleTheme={toggleTheme}
         />
       )}
       {pathname === "/" && (
@@ -290,11 +420,16 @@ function Logo() {
     </span>
   );
 }
-function Header({ user, query, setQuery, go, mobile, logout }: any) {
-  const [light, setLight] = useState(false);
-  useEffect(() => {
-    document.documentElement.dataset.mode = light ? "light" : "dark";
-  }, [light]);
+function Header({
+  user,
+  query,
+  setQuery,
+  go,
+  mobile,
+  logout,
+  theme,
+  toggleTheme,
+}: any) {
   return (
     <header className="ha-header">
       <div className="ha-container ha-header-inner">
@@ -317,10 +452,19 @@ function Header({ user, query, setQuery, go, mobile, logout }: any) {
         </div>
         <div className="ha-actions">
           <button
-            onClick={() => setLight((value) => !value)}
-            title="Đổi giao diện"
+            onClick={toggleTheme}
+            title={
+              theme === "dark"
+                ? "Chuyển sang chế độ sáng"
+                : "Chuyển sang chế độ tối"
+            }
+            aria-label={
+              theme === "dark"
+                ? "Chuyển sang chế độ sáng"
+                : "Chuyển sang chế độ tối"
+            }
           >
-            <Sun />
+            {theme === "dark" ? <Sun /> : <Moon />}
           </button>
           {user ? (
             <>
@@ -362,7 +506,7 @@ function Header({ user, query, setQuery, go, mobile, logout }: any) {
     </header>
   );
 }
-function MobileNav({ user, go, close, logout }: any) {
+function MobileNav({ user, go, close, logout, theme, toggleTheme }: any) {
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => {
@@ -385,6 +529,9 @@ function MobileNav({ user, go, close, logout }: any) {
         <button onClick={() => go("/phim")}>Hoàn thành</button>
         <button onClick={() => go("/yeu-thich")}>Phim yêu thích</button>
         <button onClick={() => go("/lich-su")}>Lịch sử xem</button>
+        <button onClick={toggleTheme}>
+          {theme === "dark" ? "Chế độ sáng" : "Chế độ tối"}
+        </button>
         {user ? (
           <>
             <button
@@ -996,24 +1143,19 @@ function Login({ onLogin, close }: any) {
     [error, setError] = useState("");
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    const accounts: Record<string, Account> = {
-      "user@gmail.com": {
-        email: "user@gmail.com",
-        name: "Minh Anh",
-        role: "user",
-      },
-      "admin@gmail.com": {
-        email: "admin@gmail.com",
-        name: "Quản trị viên",
-        role: "admin",
-      },
-    };
-    const account = accounts[email.trim().toLowerCase()];
-    if (!account || password !== "123456") {
+    const viewers = read<Viewer[]>(storage.viewers, viewerSeed);
+    const viewer = viewers.find(
+      (item) => item.email === email.trim().toLowerCase(),
+    );
+    if (!viewer || password !== "123456") {
       setError("Email hoặc mật khẩu không chính xác.");
       return;
     }
-    onLogin(account);
+    if (viewer.status === "Đã khóa") {
+      setError("Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.");
+      return;
+    }
+    onLogin({ email: viewer.email, name: viewer.name, role: viewer.role });
   };
   return (
     <main className="login-page">
@@ -1136,25 +1278,158 @@ function Profile({ user, setUser, go, logout }: any) {
   );
 }
 
-function Admin({ movies, setMovies, logout, pathname, go }: any) {
-  const section = pathname === "/admin/phim" ? "movies" : "dashboard";
+function Admin({
+  movies,
+  setMovies,
+  logout,
+  pathname,
+  go,
+  settings,
+  setSettings,
+}: any) {
+  const section = pathname.includes("/admin/phim")
+    ? "movies"
+    : pathname.includes("/admin/lich-chieu")
+      ? "schedule"
+      : pathname.includes("/admin/nguoi-dung")
+        ? "users"
+        : pathname.includes("/admin/cai-dat")
+          ? "settings"
+          : "dashboard";
   const [editing, setEditing] = useState<Movie | null | undefined>(undefined);
+  const [editingViewer, setEditingViewer] = useState<Viewer | null | undefined>(
+    undefined,
+  );
+  const [viewers, setViewers] = useState<Viewer[]>(viewerSeed);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    const savedViewers = read<Viewer[]>(storage.viewers, viewerSeed);
+    setViewers(savedViewers);
+    if (!localStorage.getItem(storage.viewers)) {
+      write(storage.viewers, savedViewers);
+    }
+  }, []);
+
+  const notify = (message: string) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(""), 2200);
+  };
   const save = (movie: Movie) => {
+    const normalized = {
+      ...movie,
+      slug: movie.slug || toSlug(movie.title),
+      episode: Math.min(movie.episode, movie.totalEpisodes),
+    };
     const next = movies.some((item: Movie) => item.id === movie.id)
-      ? movies.map((item: Movie) => (item.id === movie.id ? movie : item))
-      : [movie, ...movies];
+      ? movies.map((item: Movie) => (item.id === movie.id ? normalized : item))
+      : [normalized, ...movies];
     setMovies(next);
     write(storage.movies, next);
     setEditing(undefined);
+    notify(movie.title ? `Đã lưu “${movie.title}”` : "Đã lưu phim");
   };
   const remove = (id: number) => {
     if (!confirm("Xóa phim này khỏi thư viện?")) return;
     const next = movies.filter((item: Movie) => item.id !== id);
     setMovies(next);
     write(storage.movies, next);
+    notify("Đã xóa phim khỏi thư viện");
+  };
+  const removeMany = (ids: number[]) => {
+    if (!ids.length || !confirm(`Xóa ${ids.length} phim đã chọn?`)) return;
+    const next = movies.filter((item: Movie) => !ids.includes(item.id));
+    setMovies(next);
+    write(storage.movies, next);
+    notify(`Đã xóa ${ids.length} phim`);
+  };
+  const duplicateMovie = (movie: Movie) => {
+    const duplicate = {
+      ...movie,
+      id: Date.now(),
+      title: `${movie.title} — Bản sao`,
+      slug: `${movie.slug}-ban-sao-${Date.now()}`,
+      featured: false,
+      views: 0,
+    };
+    const next = [duplicate, ...movies];
+    setMovies(next);
+    write(storage.movies, next);
+    notify("Đã nhân bản phim");
+  };
+  const patchMovie = (id: number, changes: Partial<Movie>) => {
+    const next = movies.map((movie: Movie) =>
+      movie.id === id ? { ...movie, ...changes } : movie,
+    );
+    setMovies(next);
+    write(storage.movies, next);
+    notify("Đã cập nhật phim");
+  };
+  const saveViewer = (viewer: Viewer) => {
+    const normalized =
+      viewer.id === 1
+        ? {
+            ...viewer,
+            email: "admin@gmail.com",
+            role: "admin" as const,
+            status: "Đang hoạt động" as const,
+          }
+        : viewer;
+    const duplicateEmail = viewers.some(
+      (item) => item.email === normalized.email && item.id !== normalized.id,
+    );
+    if (duplicateEmail) {
+      notify("Email đã tồn tại trong hệ thống");
+      return;
+    }
+    const next = viewers.some((item) => item.id === normalized.id)
+      ? viewers.map((item) => (item.id === normalized.id ? normalized : item))
+      : [normalized, ...viewers];
+    setViewers(next);
+    write(storage.viewers, next);
+    setEditingViewer(undefined);
+    notify("Đã lưu tài khoản");
+  };
+  const patchViewer = (id: number, changes: Partial<Viewer>) => {
+    const next = viewers.map((viewer) =>
+      viewer.id === id ? { ...viewer, ...changes } : viewer,
+    );
+    setViewers(next);
+    write(storage.viewers, next);
+    notify("Đã cập nhật tài khoản");
+  };
+  const removeViewer = (id: number) => {
+    const target = viewers.find((viewer) => viewer.id === id);
+    if (!target || target.role === "admin") {
+      notify("Không thể xóa tài khoản quản trị chính");
+      return;
+    }
+    if (!confirm(`Xóa tài khoản ${target.email}?`)) return;
+    const next = viewers.filter((viewer) => viewer.id !== id);
+    setViewers(next);
+    write(storage.viewers, next);
+    notify("Đã xóa tài khoản");
+  };
+  const saveSettings = (next: SiteSettings) => {
+    setSettings(next);
+    write(storage.settings, next);
+    notify("Đã lưu cấu hình hệ thống");
+  };
+  const sectionTitle: Record<string, string> = {
+    dashboard: "Tổng quan hệ thống",
+    movies: "Quản lý kho phim",
+    schedule: "Lịch phát hành",
+    users: "Quản lý người dùng",
+    settings: "Cấu hình hệ thống",
   };
   return (
     <div className="admin-layout">
+      {notice && (
+        <div className="admin-notice">
+          <Check />
+          {notice}
+        </div>
+      )}
       <aside>
         <Logo />
         <p>QUẢN TRỊ</p>
@@ -1170,8 +1445,26 @@ function Admin({ movies, setMovies, logout, pathname, go }: any) {
         >
           <Clapperboard /> Kho phim
         </button>
-        <button>
+        <button
+          className={section === "schedule" ? "active" : ""}
+          onClick={() => go("/admin/lich-chieu")}
+        >
+          <CalendarClock /> Lịch chiếu
+        </button>
+        <button
+          className={section === "users" ? "active" : ""}
+          onClick={() => go("/admin/nguoi-dung")}
+        >
           <Users /> Người dùng
+        </button>
+        <button
+          className={section === "settings" ? "active" : ""}
+          onClick={() => go("/admin/cai-dat")}
+        >
+          <Settings /> Cài đặt
+        </button>
+        <button onClick={() => go("/")}>
+          <Eye /> Xem website
         </button>
         <button className="admin-logout" onClick={logout}>
           <LogOut /> Đăng xuất
@@ -1181,16 +1474,42 @@ function Admin({ movies, setMovies, logout, pathname, go }: any) {
         <header>
           <div>
             <p className="mini-label">VIUFILM3D STUDIO</p>
-            <h1>
-              {section === "dashboard" ? "Tổng quan hệ thống" : "Quản lý phim"}
-            </h1>
+            <h1>{sectionTitle[section]}</h1>
           </div>
-          <span className="admin-avatar">QT</span>
+          <div className="admin-profile">
+            <span>
+              Quản trị viên<small>Toàn quyền hệ thống</small>
+            </span>
+            <i className="admin-avatar">QT</i>
+          </div>
         </header>
-        {section === "dashboard" ? (
-          <AdminDashboard movies={movies} />
-        ) : (
-          <AdminMovies movies={movies} edit={setEditing} remove={remove} />
+        {section === "dashboard" && (
+          <AdminDashboard movies={movies} viewers={viewers} go={go} />
+        )}
+        {section === "movies" && (
+          <AdminMovies
+            movies={movies}
+            edit={setEditing}
+            remove={remove}
+            removeMany={removeMany}
+            duplicate={duplicateMovie}
+            patchMovie={patchMovie}
+            pageSize={settings.itemsPerPage}
+          />
+        )}
+        {section === "schedule" && (
+          <AdminSchedule movies={movies} edit={setEditing} patch={patchMovie} />
+        )}
+        {section === "users" && (
+          <AdminUsers
+            viewers={viewers}
+            edit={setEditingViewer}
+            patch={patchViewer}
+            remove={removeViewer}
+          />
+        )}
+        {section === "settings" && (
+          <AdminSettings settings={settings} save={saveSettings} />
         )}
       </main>
       {editing !== undefined && (
@@ -1200,17 +1519,48 @@ function Admin({ movies, setMovies, logout, pathname, go }: any) {
           save={save}
         />
       )}{" "}
+      {editingViewer !== undefined && (
+        <ViewerForm
+          viewer={editingViewer}
+          close={() => setEditingViewer(undefined)}
+          save={saveViewer}
+        />
+      )}
       {section === "movies" && (
         <button className="admin-fab" onClick={() => setEditing(null)}>
           <Plus /> Thêm phim
         </button>
       )}
+      {section === "users" && (
+        <button className="admin-fab" onClick={() => setEditingViewer(null)}>
+          <UserPlus /> Thêm người dùng
+        </button>
+      )}
     </div>
   );
 }
-function AdminDashboard({ movies }: any) {
+function AdminDashboard({ movies, viewers, go }: any) {
   const totalViews = movies.reduce(
     (sum: number, movie: Movie) => sum + movie.views,
+    0,
+  );
+  const averageRating = movies.length
+    ? movies.reduce((sum: number, movie: Movie) => sum + movie.rating, 0) /
+      movies.length
+    : 0;
+  const statusSummary = ["Đang chiếu", "Hoàn thành", "Sắp chiếu"].map(
+    (status) => ({
+      status,
+      count: movies.filter((movie: Movie) => movie.status === status).length,
+    }),
+  );
+  const maxStatus = Math.max(...statusSummary.map((item) => item.count), 1);
+  const completedEpisodes = movies.reduce(
+    (sum: number, movie: Movie) => sum + movie.episode,
+    0,
+  );
+  const totalEpisodes = movies.reduce(
+    (sum: number, movie: Movie) => sum + movie.totalEpisodes,
     0,
   );
   return (
@@ -1231,31 +1581,87 @@ function AdminDashboard({ movies }: any) {
         <div>
           <Star />
           <span>Điểm trung bình</span>
-          <strong>
-            {(
-              movies.reduce(
-                (sum: number, movie: Movie) => sum + movie.rating,
-                0,
-              ) / movies.length
-            ).toFixed(1)}
-          </strong>
+          <strong>{averageRating.toFixed(1)}</strong>
           <small>Trên thang 10</small>
         </div>
         <div>
-          <CalendarDays />
-          <span>Đang chiếu</span>
+          <Users />
+          <span>Người dùng</span>
+          <strong>{viewers.length}</strong>
+          <small>
+            {viewers.filter((viewer: Viewer) => viewer.plan === "VIP").length}{" "}
+            tài khoản VIP
+          </small>
+        </div>
+      </div>
+      <div className="admin-kpis">
+        <article>
+          <div>
+            <TrendingUp />
+            <span>Tiến độ nội dung</span>
+          </div>
+          <strong>
+            {totalEpisodes
+              ? Math.round((completedEpisodes / totalEpisodes) * 100)
+              : 0}
+            %
+          </strong>
+          <div className="admin-progress">
+            <i
+              style={{
+                width: `${totalEpisodes ? (completedEpisodes / totalEpisodes) * 100 : 0}%`,
+              }}
+            />
+          </div>
+          <small>
+            {completedEpisodes}/{totalEpisodes} tập đã phát hành
+          </small>
+        </article>
+        <article>
+          <div>
+            <ShieldCheck />
+            <span>Tài khoản hoạt động</span>
+          </div>
           <strong>
             {
-              movies.filter((movie: Movie) => movie.status === "Đang chiếu")
-                .length
+              viewers.filter(
+                (viewer: Viewer) => viewer.status === "Đang hoạt động",
+              ).length
             }
           </strong>
-          <small>Cập nhật mỗi tuần</small>
-        </div>
+          <small>
+            {
+              viewers.filter((viewer: Viewer) => viewer.status === "Đã khóa")
+                .length
+            }{" "}
+            tài khoản đang bị khóa
+          </small>
+        </article>
+        <article>
+          <div>
+            <Database />
+            <span>Chất lượng thư viện</span>
+          </div>
+          <strong>
+            {movies.filter((movie: Movie) => movie.quality === "4K").length}
+          </strong>
+          <small>
+            phim 4K · {movies.filter((movie: Movie) => movie.featured).length}{" "}
+            phim nổi bật
+          </small>
+        </article>
       </div>
       <div className="admin-panels">
         <section>
-          <h2>Phim xem nhiều nhất</h2>
+          <div className="admin-panel-title">
+            <div>
+              <h2>Phim xem nhiều nhất</h2>
+              <span>Xếp hạng theo tổng lượt xem</span>
+            </div>
+            <button onClick={() => go("/admin/phim")}>
+              Quản lý <ChevronRight />
+            </button>
+          </div>
           {[...movies]
             .sort((a: Movie, b: Movie) => b.views - a.views)
             .slice(0, 6)
@@ -1271,7 +1677,31 @@ function AdminDashboard({ movies }: any) {
             ))}
         </section>
         <section>
-          <h2>Lịch cập nhật</h2>
+          <div className="admin-panel-title">
+            <div>
+              <h2>Trạng thái thư viện</h2>
+              <span>Phân bổ nội dung hiện tại</span>
+            </div>
+          </div>
+          <div className="status-chart">
+            {statusSummary.map((item) => (
+              <div key={item.status}>
+                <span>
+                  {item.status}
+                  <b>{item.count}</b>
+                </span>
+                <i>
+                  <em style={{ width: `${(item.count / maxStatus) * 100}%` }} />
+                </i>
+              </div>
+            ))}
+          </div>
+          <div className="admin-panel-title schedule-title">
+            <div>
+              <h2>Lịch tuần</h2>
+              <span>Số phim cập nhật theo ngày</span>
+            </div>
+          </div>
           {[
             "Thứ 2",
             "Thứ 3",
@@ -1296,16 +1726,100 @@ function AdminDashboard({ movies }: any) {
           ))}
         </section>
       </div>
+      <section className="admin-recent">
+        <div className="admin-panel-title">
+          <div>
+            <h2>Nội dung cần chú ý</h2>
+            <span>Phim sắp hoàn thành hoặc chưa có lượt xem</span>
+          </div>
+          <button onClick={() => go("/admin/lich-chieu")}>
+            Xem lịch <ChevronRight />
+          </button>
+        </div>
+        <div className="admin-alert-grid">
+          {movies
+            .filter(
+              (movie: Movie) =>
+                movie.views === 0 || movie.totalEpisodes - movie.episode <= 3,
+            )
+            .slice(0, 6)
+            .map((movie: Movie) => (
+              <article key={movie.id}>
+                <MovieArt movie={movie} />
+                <div>
+                  <b>{movie.title}</b>
+                  <span>
+                    {movie.status} · Tập {movie.episode}/{movie.totalEpisodes}
+                  </span>
+                </div>
+                <i className="status-pill">
+                  {movie.views === 0 ? "Chưa có lượt xem" : "Sắp hoàn thành"}
+                </i>
+              </article>
+            ))}
+        </div>
+      </section>
     </>
   );
 }
-function AdminMovies({ movies, edit, remove }: any) {
+function AdminMovies({
+  movies,
+  edit,
+  remove,
+  removeMany,
+  duplicate,
+  patchMovie,
+  pageSize,
+}: any) {
   const [keyword, setKeyword] = useState("");
-  const list = movies.filter((movie: Movie) =>
-    movie.title.toLowerCase().includes(keyword.toLowerCase()),
+  const [status, setStatus] = useState("Tất cả");
+  const [genre, setGenre] = useState("Tất cả");
+  const [sort, setSort] = useState("newest");
+  const [selected, setSelected] = useState<number[]>([]);
+  const [page, setPage] = useState(1);
+  const filteredList = movies
+    .filter((movie: Movie) => {
+      const target =
+        `${movie.title} ${movie.originalTitle} ${movie.studio}`.toLowerCase();
+      return (
+        target.includes(keyword.trim().toLowerCase()) &&
+        (status === "Tất cả" || movie.status === status) &&
+        (genre === "Tất cả" || movie.genres.includes(genre))
+      );
+    })
+    .sort((a: Movie, b: Movie) => {
+      if (sort === "views") return b.views - a.views;
+      if (sort === "rating") return b.rating - a.rating;
+      if (sort === "title") return a.title.localeCompare(b.title, "vi");
+      return b.id - a.id;
+    });
+  const totalPages = Math.max(1, Math.ceil(filteredList.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const list = filteredList.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize,
   );
+  const currentPageIds = list.map((movie: Movie) => movie.id);
+  const allCurrentSelected =
+    currentPageIds.length > 0 &&
+    currentPageIds.every((id: number) => selected.includes(id));
+  useEffect(() => setPage(1), [keyword, status, genre, sort, pageSize]);
+  const toggleAll = () => {
+    setSelected((current) =>
+      allCurrentSelected
+        ? current.filter((id) => !currentPageIds.includes(id))
+        : [...new Set([...current, ...currentPageIds])],
+    );
+  };
+  const toggle = (id: number) => {
+    setSelected((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
+  };
   return (
-    <section className="admin-table-wrap">
+    <section className="admin-library">
       <div className="admin-toolbar">
         <div className="catalog-search">
           <Search />
@@ -1315,55 +1829,743 @@ function AdminMovies({ movies, edit, remove }: any) {
             placeholder="Tìm tên phim..."
           />
         </div>
-        <span>{list.length} phim</span>
+        <div className="admin-filters">
+          <label>
+            <Filter />
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option>Tất cả</option>
+              <option>Đang chiếu</option>
+              <option>Hoàn thành</option>
+              <option>Sắp chiếu</option>
+            </select>
+          </label>
+          <select
+            value={genre}
+            onChange={(event) => setGenre(event.target.value)}
+          >
+            {genres.map((item) => (
+              <option key={item}>{item}</option>
+            ))}
+          </select>
+          <select
+            value={sort}
+            onChange={(event) => setSort(event.target.value)}
+          >
+            <option value="newest">Mới thêm</option>
+            <option value="views">Nhiều lượt xem</option>
+            <option value="rating">Điểm cao nhất</option>
+            <option value="title">Tên A–Z</option>
+          </select>
+        </div>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>Phim</th>
-            <th>Tiến độ</th>
-            <th>Trạng thái</th>
-            <th>Lượt xem</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((movie: Movie) => (
-            <tr key={movie.id}>
-              <td>
-                <MovieArt movie={movie} />
-                <span>
-                  <b>{movie.title}</b>
-                  <small>{movie.genres.join(" · ")}</small>
-                </span>
-              </td>
-              <td>
-                {movie.episode}/{movie.totalEpisodes}
-              </td>
-              <td>
-                <i className="status-pill">{movie.status}</i>
-              </td>
-              <td>{compact(movie.views)}</td>
-              <td>
-                <button onClick={() => edit(movie)}>
-                  <Pencil />
-                </button>
-                <button onClick={() => remove(movie.id)}>
-                  <Trash2 />
-                </button>
-              </td>
+      <div className="admin-bulkbar">
+        <span>
+          <b>{filteredList.length}</b> phim · <b>{selected.length}</b> đã chọn
+        </span>
+        {selected.length > 0 && (
+          <button
+            className="danger-action"
+            onClick={() => {
+              removeMany(selected);
+              setSelected([]);
+            }}
+          >
+            <Trash2 /> Xóa đã chọn
+          </button>
+        )}
+      </div>
+      <div className="admin-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>
+                <input
+                  type="checkbox"
+                  checked={allCurrentSelected}
+                  onChange={toggleAll}
+                  aria-label="Chọn tất cả"
+                />
+              </th>
+              <th>Phim</th>
+              <th>Thông tin</th>
+              <th>Tiến độ</th>
+              <th>Lịch chiếu</th>
+              <th>Trạng thái</th>
+              <th>Hiệu suất</th>
+              <th />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {list.map((movie: Movie) => (
+              <tr key={movie.id}>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(movie.id)}
+                    onChange={() => toggle(movie.id)}
+                    aria-label={`Chọn ${movie.title}`}
+                  />
+                </td>
+                <td>
+                  <MovieArt movie={movie} />
+                  <span>
+                    <b>{movie.title}</b>
+                    <small>{movie.originalTitle}</small>
+                    <em>{movie.genres.join(" · ")}</em>
+                  </span>
+                </td>
+                <td>
+                  <b>
+                    {movie.year} · {movie.quality}
+                  </b>
+                  <small>
+                    {movie.studio}
+                    <br />
+                    {movie.duration} phút/tập
+                  </small>
+                </td>
+                <td>
+                  <b>
+                    {movie.episode}/{movie.totalEpisodes}
+                  </b>
+                  <div className="table-progress">
+                    <i
+                      style={{
+                        width: `${(movie.episode / movie.totalEpisodes) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </td>
+                <td>
+                  <b>{movie.updateDay}</b>
+                  <small>
+                    {movie.status === "Đang chiếu"
+                      ? "Cập nhật hàng tuần"
+                      : "Không có lịch mới"}
+                  </small>
+                </td>
+                <td>
+                  <button
+                    className={`status-pill status-${toSlug(movie.status)}`}
+                    onClick={() =>
+                      patchMovie(movie.id, {
+                        status:
+                          movie.status === "Đang chiếu"
+                            ? "Hoàn thành"
+                            : "Đang chiếu",
+                      })
+                    }
+                  >
+                    {movie.status}
+                  </button>
+                  {movie.featured && (
+                    <small className="featured-label">
+                      <Star /> Nổi bật
+                    </small>
+                  )}
+                </td>
+                <td>
+                  <b>{compact(movie.views)} lượt</b>
+                  <small>
+                    <Star /> {movie.rating.toFixed(1)} điểm
+                  </small>
+                </td>
+                <td>
+                  <button title="Nhân bản" onClick={() => duplicate(movie)}>
+                    <Copy />
+                  </button>
+                  <button title="Chỉnh sửa" onClick={() => edit(movie)}>
+                    <Pencil />
+                  </button>
+                  <button
+                    title="Xóa"
+                    className="delete-icon"
+                    onClick={() => remove(movie.id)}
+                  >
+                    <Trash2 />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!list.length && (
+          <div className="admin-empty">
+            <Search />
+            <b>Không tìm thấy phim phù hợp</b>
+            <span>Hãy thay đổi từ khóa hoặc bộ lọc.</span>
+          </div>
+        )}
+      </div>
+      {filteredList.length > pageSize && (
+        <div className="admin-pagination">
+          <span>
+            Trang {safePage}/{totalPages} · Hiển thị {list.length} phim
+          </span>
+          <div>
+            <button
+              disabled={safePage === 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              Trước
+            </button>
+            {Array.from({ length: totalPages }, (_, index) => index + 1)
+              .slice(Math.max(0, safePage - 3), safePage + 2)
+              .map((item) => (
+                <button
+                  key={item}
+                  className={item === safePage ? "active" : ""}
+                  onClick={() => setPage(item)}
+                >
+                  {item}
+                </button>
+              ))}
+            <button
+              disabled={safePage === totalPages}
+              onClick={() =>
+                setPage((current) => Math.min(totalPages, current + 1))
+              }
+            >
+              Sau
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
+function AdminSchedule({ movies, edit, patch }: any) {
+  const days = [
+    "Thứ 2",
+    "Thứ 3",
+    "Thứ 4",
+    "Thứ 5",
+    "Thứ 6",
+    "Thứ 7",
+    "Chủ nhật",
+  ];
+  return (
+    <div className="schedule-admin">
+      <div className="admin-summary-strip">
+        <article>
+          <CalendarClock />
+          <span>
+            Lịch trong tuần
+            <strong>
+              {
+                movies.filter((movie: Movie) => movie.status === "Đang chiếu")
+                  .length
+              }{" "}
+              phim
+            </strong>
+          </span>
+        </article>
+        <article>
+          <Film />
+          <span>
+            Tập đã phát hành
+            <strong>
+              {movies.reduce(
+                (sum: number, movie: Movie) => sum + movie.episode,
+                0,
+              )}{" "}
+              tập
+            </strong>
+          </span>
+        </article>
+        <article>
+          <Clock3 />
+          <span>
+            Sắp chiếu
+            <strong>
+              {
+                movies.filter((movie: Movie) => movie.status === "Sắp chiếu")
+                  .length
+              }{" "}
+              phim
+            </strong>
+          </span>
+        </article>
+      </div>
+      <div className="schedule-board">
+        {days.map((day) => {
+          const dayMovies = movies.filter(
+            (movie: Movie) => movie.updateDay === day,
+          );
+          return (
+            <section key={day}>
+              <header>
+                <div>
+                  <b>{day}</b>
+                  <span>{dayMovies.length} phim</span>
+                </div>
+                <CalendarDays />
+              </header>
+              <div>
+                {dayMovies.map((movie: Movie) => (
+                  <article key={movie.id}>
+                    <MovieArt movie={movie} />
+                    <div>
+                      <b>{movie.title}</b>
+                      <span>
+                        Tập {movie.episode}/{movie.totalEpisodes} ·{" "}
+                        {movie.status}
+                      </span>
+                      <small>{movie.studio}</small>
+                    </div>
+                    <div className="schedule-actions">
+                      <button
+                        title="Tăng một tập"
+                        disabled={movie.episode >= movie.totalEpisodes}
+                        onClick={() =>
+                          patch(movie.id, {
+                            episode: Math.min(
+                              movie.totalEpisodes,
+                              movie.episode + 1,
+                            ),
+                            status:
+                              movie.episode + 1 >= movie.totalEpisodes
+                                ? "Hoàn thành"
+                                : movie.status,
+                          })
+                        }
+                      >
+                        <Plus /> Phát tập mới
+                      </button>
+                      <button title="Sửa lịch" onClick={() => edit(movie)}>
+                        <Pencil />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {!dayMovies.length && (
+                  <p className="schedule-empty">Chưa có phim được xếp lịch.</p>
+                )}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AdminUsers({ viewers, edit, patch, remove }: any) {
+  const [keyword, setKeyword] = useState("");
+  const [status, setStatus] = useState("Tất cả");
+  const list = viewers.filter((viewer: Viewer) => {
+    const matched = `${viewer.name} ${viewer.email}`
+      .toLowerCase()
+      .includes(keyword.toLowerCase());
+    return (
+      matched &&
+      (status === "Tất cả" ||
+        viewer.status === status ||
+        viewer.plan === status)
+    );
+  });
+  return (
+    <section className="admin-users">
+      <div className="admin-summary-strip">
+        <article>
+          <Users />
+          <span>
+            Tổng tài khoản<strong>{viewers.length}</strong>
+          </span>
+        </article>
+        <article>
+          <UserCheck />
+          <span>
+            Đang hoạt động
+            <strong>
+              {
+                viewers.filter(
+                  (viewer: Viewer) => viewer.status === "Đang hoạt động",
+                ).length
+              }
+            </strong>
+          </span>
+        </article>
+        <article>
+          <Star />
+          <span>
+            Thành viên VIP
+            <strong>
+              {viewers.filter((viewer: Viewer) => viewer.plan === "VIP").length}
+            </strong>
+          </span>
+        </article>
+      </div>
+      <div className="admin-toolbar user-toolbar">
+        <div className="catalog-search">
+          <Search />
+          <input
+            value={keyword}
+            onChange={(event) => setKeyword(event.target.value)}
+            placeholder="Tìm tên hoặc email..."
+          />
+        </div>
+        <select
+          value={status}
+          onChange={(event) => setStatus(event.target.value)}
+        >
+          <option>Tất cả</option>
+          <option>Đang hoạt động</option>
+          <option>Đã khóa</option>
+          <option>VIP</option>
+          <option>Miễn phí</option>
+        </select>
+      </div>
+      <div className="admin-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Người dùng</th>
+              <th>Vai trò</th>
+              <th>Gói</th>
+              <th>Trạng thái</th>
+              <th>Ngày tham gia</th>
+              <th>Hoạt động</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((viewer: Viewer) => (
+              <tr key={viewer.id}>
+                <td>
+                  <i className="user-initial">
+                    {viewer.name
+                      .split(" ")
+                      .map((part) => part[0])
+                      .slice(-2)
+                      .join("")}
+                  </i>
+                  <span>
+                    <b>{viewer.name}</b>
+                    <small>{viewer.email}</small>
+                  </span>
+                </td>
+                <td>
+                  <span className="role-badge">
+                    <ShieldCheck />
+                    {viewer.role === "admin" ? "Quản trị" : "Người xem"}
+                  </span>
+                </td>
+                <td>
+                  <button
+                    className={`plan-badge ${viewer.plan === "VIP" ? "vip" : ""}`}
+                    onClick={() =>
+                      patch(viewer.id, {
+                        plan: viewer.plan === "VIP" ? "Miễn phí" : "VIP",
+                      })
+                    }
+                  >
+                    {viewer.plan}
+                  </button>
+                </td>
+                <td>
+                  <button
+                    className={`account-status ${viewer.status === "Đã khóa" ? "blocked" : ""}`}
+                    disabled={viewer.role === "admin"}
+                    onClick={() =>
+                      patch(viewer.id, {
+                        status:
+                          viewer.status === "Đang hoạt động"
+                            ? "Đã khóa"
+                            : "Đang hoạt động",
+                      })
+                    }
+                  >
+                    <i />
+                    {viewer.status}
+                  </button>
+                </td>
+                <td>{new Date(viewer.joinedAt).toLocaleDateString("vi-VN")}</td>
+                <td>
+                  <b>{viewer.watches} lượt xem</b>
+                  <small>
+                    {new Date(viewer.lastActive).toLocaleDateString("vi-VN")}
+                  </small>
+                </td>
+                <td>
+                  <button onClick={() => edit(viewer)}>
+                    <Pencil />
+                  </button>
+                  <button
+                    className="delete-icon"
+                    onClick={() => remove(viewer.id)}
+                  >
+                    <Trash2 />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!list.length && (
+          <div className="admin-empty">
+            <Users />
+            <b>Không có tài khoản phù hợp</b>
+            <span>Thử thay đổi bộ lọc tìm kiếm.</span>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AdminSettings({
+  settings,
+  save,
+}: {
+  settings: SiteSettings;
+  save: (settings: SiteSettings) => void;
+}) {
+  const [form, setForm] = useState(settings);
+  useEffect(() => setForm(settings), [settings]);
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    save(form);
+  };
+  return (
+    <form className="admin-settings" onSubmit={submit}>
+      <section>
+        <div className="settings-heading">
+          <Settings />
+          <div>
+            <h2>Thông tin website</h2>
+            <p>Tên và thông tin hiển thị chung của hệ thống.</p>
+          </div>
+        </div>
+        <div className="settings-grid">
+          <label>
+            Tên website
+            <input
+              required
+              value={form.siteName}
+              onChange={(event) =>
+                setForm({ ...form, siteName: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Email hỗ trợ
+            <input
+              required
+              type="email"
+              value={form.supportEmail}
+              onChange={(event) =>
+                setForm({ ...form, supportEmail: event.target.value })
+              }
+            />
+          </label>
+          <label className="span-two">
+            Khẩu hiệu
+            <input
+              required
+              value={form.tagline}
+              onChange={(event) =>
+                setForm({ ...form, tagline: event.target.value })
+              }
+            />
+          </label>
+        </div>
+      </section>
+      <section>
+        <div className="settings-heading">
+          <ShieldCheck />
+          <div>
+            <h2>Quyền truy cập</h2>
+            <p>Kiểm soát đăng ký và trạng thái vận hành.</p>
+          </div>
+        </div>
+        <label className="setting-toggle">
+          <span>
+            <b>Cho phép đăng ký tài khoản</b>
+            <small>Người xem mới có thể tạo tài khoản.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={form.allowRegistration}
+            onChange={(event) =>
+              setForm({ ...form, allowRegistration: event.target.checked })
+            }
+          />
+        </label>
+        <label className="setting-toggle">
+          <span>
+            <b>Hiển thị lượt xem công khai</b>
+            <small>Hiện thống kê lượt xem trên trang phim.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={form.showViewCount}
+            onChange={(event) =>
+              setForm({ ...form, showViewCount: event.target.checked })
+            }
+          />
+        </label>
+        <label className="setting-toggle warning">
+          <span>
+            <b>Chế độ bảo trì</b>
+            <small>Đánh dấu hệ thống đang trong thời gian bảo trì.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={form.maintenance}
+            onChange={(event) =>
+              setForm({ ...form, maintenance: event.target.checked })
+            }
+          />
+        </label>
+      </section>
+      <section>
+        <div className="settings-heading">
+          <Database />
+          <div>
+            <h2>Hiển thị dữ liệu</h2>
+            <p>Cấu hình số lượng nội dung trong trang quản trị.</p>
+          </div>
+        </div>
+        <label>
+          Số phim mỗi trang
+          <select
+            value={form.itemsPerPage}
+            onChange={(event) =>
+              setForm({ ...form, itemsPerPage: Number(event.target.value) })
+            }
+          >
+            <option value={10}>10 phim</option>
+            <option value={20}>20 phim</option>
+            <option value={30}>30 phim</option>
+            <option value={50}>50 phim</option>
+          </select>
+        </label>
+      </section>
+      <div className="settings-save">
+        <span>Mọi thay đổi được lưu trong trình duyệt hiện tại.</span>
+        <button className="primary-btn">
+          <Save /> Lưu cấu hình
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ViewerForm({ viewer, close, save }: any) {
+  const [form, setForm] = useState<Viewer>(
+    viewer || {
+      id: Date.now(),
+      name: "",
+      email: "",
+      role: "user",
+      status: "Đang hoạt động",
+      plan: "Miễn phí",
+      joinedAt: new Date().toISOString().slice(0, 10),
+      lastActive: new Date().toISOString(),
+      watches: 0,
+    },
+  );
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    save({
+      ...form,
+      name: form.name.trim(),
+      email: form.email.trim().toLowerCase(),
+    });
+  };
+  return (
+    <div className="modal-layer">
+      <form className="movie-form viewer-form" onSubmit={submit}>
+        <button type="button" className="modal-close" onClick={close}>
+          <X />
+        </button>
+        <p className="mini-label">QUẢN LÝ NGƯỜI DÙNG</p>
+        <h2>{viewer ? "Chỉnh sửa tài khoản" : "Thêm người dùng"}</h2>
+        <label>
+          Họ và tên
+          <input
+            required
+            minLength={2}
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+          />
+        </label>
+        <label>
+          Email
+          <input
+            required
+            type="email"
+            disabled={viewer?.id === 1}
+            value={form.email}
+            onChange={(event) =>
+              setForm({ ...form, email: event.target.value })
+            }
+          />
+        </label>
+        <div className="form-two">
+          <label>
+            Vai trò
+            <select
+              disabled={viewer?.id === 1}
+              value={form.role}
+              onChange={(event) =>
+                setForm({ ...form, role: event.target.value as Viewer["role"] })
+              }
+            >
+              <option value="user">Người xem</option>
+              <option value="admin">Quản trị viên</option>
+            </select>
+          </label>
+          <label>
+            Gói tài khoản
+            <select
+              value={form.plan}
+              onChange={(event) =>
+                setForm({ ...form, plan: event.target.value as Viewer["plan"] })
+              }
+            >
+              <option>Miễn phí</option>
+              <option>VIP</option>
+            </select>
+          </label>
+        </div>
+        <label>
+          Trạng thái
+          <select
+            disabled={viewer?.id === 1}
+            value={form.status}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                status: event.target.value as Viewer["status"],
+              })
+            }
+          >
+            <option>Đang hoạt động</option>
+            <option>Đã khóa</option>
+          </select>
+        </label>
+        <p className="form-hint">
+          Mật khẩu mặc định của dữ liệu mẫu là <b>123456</b>.
+        </p>
+        <button className="primary-btn full">
+          <Save /> Lưu tài khoản
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function MovieForm({ movie, close, save }: any) {
   const [form, setForm] = useState<Movie>(
     movie || {
       ...movieSeed[0],
       id: Date.now(),
+      slug: "",
       title: "",
       originalTitle: "",
       episode: 0,
@@ -1373,43 +2575,155 @@ function MovieForm({ movie, close, save }: any) {
       featured: false,
     },
   );
+  const [error, setError] = useState("");
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
+    if (form.episode > form.totalEpisodes) {
+      setError("Tập hiện tại không thể lớn hơn tổng số tập.");
+      return;
+    }
+    if (!form.genres.length) {
+      setError("Hãy chọn ít nhất một thể loại.");
+      return;
+    }
     save({
       ...form,
+      slug: form.slug.trim() || toSlug(form.title),
       title: form.title.trim(),
       originalTitle: form.originalTitle.trim(),
       description: form.description.trim(),
     });
   };
+  const toggleGenre = (genre: string) => {
+    setForm({
+      ...form,
+      genres: form.genres.includes(genre)
+        ? form.genres.filter((item) => item !== genre)
+        : [...form.genres, genre],
+    });
+  };
   return (
     <div className="modal-layer">
-      <form className="movie-form" onSubmit={submit}>
+      <form className="movie-form movie-form-wide" onSubmit={submit}>
         <button type="button" className="modal-close" onClick={close}>
           <X />
         </button>
         <p className="mini-label">THƯ VIỆN NỘI BỘ</p>
         <h2>{movie ? "Chỉnh sửa phim" : "Thêm phim mới"}</h2>
+        {error && <p className="form-error">{error}</p>}
+        <div className="form-section-title">
+          <b>Thông tin cơ bản</b>
+          <span>Tên, đường dẫn và đơn vị sản xuất</span>
+        </div>
+        <div className="form-two">
+          <label>
+            Tên phim
+            <input
+              required
+              value={form.title}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  title: event.target.value,
+                  slug: movie ? form.slug : toSlug(event.target.value),
+                })
+              }
+            />
+          </label>
+          <label>
+            Tên quốc tế
+            <input
+              required
+              value={form.originalTitle}
+              onChange={(event) =>
+                setForm({ ...form, originalTitle: event.target.value })
+              }
+            />
+          </label>
+        </div>
         <label>
-          Tên phim
+          Đường dẫn phim
           <input
             required
-            value={form.title}
+            pattern="[a-z0-9-]+"
+            value={form.slug}
             onChange={(event) =>
-              setForm({ ...form, title: event.target.value })
+              setForm({ ...form, slug: toSlug(event.target.value) })
             }
           />
+          <small className="input-help">
+            /phim/{form.slug || "duong-dan-phim"}
+          </small>
         </label>
-        <label>
-          Tên quốc tế
-          <input
-            required
-            value={form.originalTitle}
-            onChange={(event) =>
-              setForm({ ...form, originalTitle: event.target.value })
-            }
-          />
-        </label>
+        <div className="form-two">
+          <label>
+            Studio
+            <input
+              required
+              value={form.studio}
+              onChange={(event) =>
+                setForm({ ...form, studio: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            Đạo diễn
+            <input
+              required
+              value={form.director}
+              onChange={(event) =>
+                setForm({ ...form, director: event.target.value })
+              }
+            />
+          </label>
+        </div>
+        <div className="form-section-title">
+          <b>Phát hành và tập phim</b>
+          <span>Kiểm soát tiến độ, chất lượng và lịch cập nhật</span>
+        </div>
+        <div className="form-three">
+          <label>
+            Năm phát hành
+            <input
+              type="number"
+              min="2000"
+              max="2100"
+              required
+              value={form.year}
+              onChange={(event) =>
+                setForm({ ...form, year: Number(event.target.value) })
+              }
+            />
+          </label>
+          <label>
+            Thời lượng
+            <input
+              type="number"
+              min="1"
+              max="300"
+              required
+              value={form.duration}
+              onChange={(event) =>
+                setForm({ ...form, duration: Number(event.target.value) })
+              }
+            />
+          </label>
+          <label>
+            Chất lượng
+            <select
+              value={form.quality}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  quality: event.target.value as Movie["quality"],
+                })
+              }
+            >
+              <option>4K</option>
+              <option>Full HD</option>
+            </select>
+          </label>
+        </div>
         <div className="form-two">
           <label>
             Tập hiện tại
@@ -1435,7 +2749,7 @@ function MovieForm({ movie, close, save }: any) {
             />
           </label>
         </div>
-        <div className="form-two">
+        <div className="form-three">
           <label>
             Trạng thái
             <select
@@ -1473,18 +2787,121 @@ function MovieForm({ movie, close, save }: any) {
               ))}
             </select>
           </label>
+          <label>
+            Video
+            <input
+              required
+              value={form.video}
+              onChange={(event) =>
+                setForm({ ...form, video: event.target.value })
+              }
+            />
+          </label>
+        </div>
+        <div className="form-section-title">
+          <b>Phân loại và hiển thị</b>
+          <span>Thể loại, màu poster và thông số thống kê</span>
+        </div>
+        <div className="genre-options">
+          {genres
+            .filter((genre) => genre !== "Tất cả")
+            .map((genre) => (
+              <label
+                key={genre}
+                className={form.genres.includes(genre) ? "selected" : ""}
+              >
+                <input
+                  type="checkbox"
+                  checked={form.genres.includes(genre)}
+                  onChange={() => toggleGenre(genre)}
+                />
+                {genre}
+              </label>
+            ))}
+        </div>
+        <div className="form-three">
+          <label>
+            Điểm đánh giá
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+              value={form.rating}
+              onChange={(event) =>
+                setForm({ ...form, rating: Number(event.target.value) })
+              }
+            />
+          </label>
+          <label>
+            Lượt xem
+            <input
+              type="number"
+              min="0"
+              value={form.views}
+              onChange={(event) =>
+                setForm({ ...form, views: Number(event.target.value) })
+              }
+            />
+          </label>
+          <label className="featured-toggle">
+            <span>Phim nổi bật</span>
+            <input
+              type="checkbox"
+              checked={Boolean(form.featured)}
+              onChange={(event) =>
+                setForm({ ...form, featured: event.target.checked })
+              }
+            />
+          </label>
+        </div>
+        <div className="form-two color-fields">
+          <label>
+            Màu poster chính
+            <input
+              type="color"
+              value={form.colors[0]}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  colors: [event.target.value, form.colors[1]],
+                })
+              }
+            />
+          </label>
+          <label>
+            Màu poster phụ
+            <input
+              type="color"
+              value={form.colors[1]}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  colors: [form.colors[0], event.target.value],
+                })
+              }
+            />
+          </label>
         </div>
         <label>
           Mô tả
           <textarea
             required
+            minLength={30}
             value={form.description}
             onChange={(event) =>
               setForm({ ...form, description: event.target.value })
             }
           />
         </label>
-        <button className="primary-btn full">Lưu phim</button>
+        <div className="form-actions">
+          <button type="button" className="secondary-btn" onClick={close}>
+            Hủy
+          </button>
+          <button className="primary-btn">
+            <Save /> Lưu phim
+          </button>
+        </div>
       </form>
     </div>
   );
